@@ -8,6 +8,7 @@
 // BSD license, all text above must be included in any redistribution.
 
 #include <RGBmatrixPanel.h>
+//#include <SoftwareSerial.h>
 
 // Most of the signal pins are configurable, but the CLK pin has some
 // special constraints.  On 8-bit AVR boards it must be on PORTB...
@@ -25,19 +26,25 @@
 #define A   A0
 #define B   A1
 #define C   A2
+#define BUFFER_SIZE 64
 
 // Last parameter = 'true' enables double-buffering, for flicker-free,
 // buttery smooth animation.  Note that NOTHING WILL SHOW ON THE DISPLAY
 // until the first call to swapBuffers().  This is normal.
 RGBmatrixPanel matrix(A, B, C, CLK, LAT, OE, false);
+//SoftwareSerial mySerial(12, 13); //RX TX
 
 // Similar to F(), but for PROGMEM string pointers rather than literals
 #define F2(progmem_ptr) (const __FlashStringHelper *)progmem_ptr
 
-const char str[] PROGMEM = "Adafruit 16x32 RGB LED Matrix";
-int16_t    textX         = matrix.width(),
-           textMin       = (int16_t)sizeof(str) * -12,
-           hue           = 0;
+//const char str[] = "51.76F|Rain|72:5m|17:18m|C.Katsu|N:99%|S:38%|SW:45%";
+//int16_t    textX         = matrix.width(),
+//          textMin       = (int16_t)sizeof(str) * -12,
+//          hue           = 0;
+
+int16_t    textX, textMin, hue;
+char buf[BUFFER_SIZE];
+
 int8_t ball[3][4] = {
   {  3,  0,  1,  1 }, // Initial X,Y pos & velocity for 3 bouncy balls
   { 17, 15,  1, -1 },
@@ -50,18 +57,50 @@ static const uint16_t PROGMEM ballcolor[3] = {
 };
 
 void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+  Serial.begin(9600); //Arduino Hardware RX/TX
+  //char str[] = "51.76F|Rain|72:5m|17:18m|C.Katsu|N:99%|S:38%|SW:45%";
+  
+  digitalWrite(LED_BUILTIN, LOW);
+
+  delay(10000); //Allow for garbage serial to pass
+
+  bool breakLoop = false;
+  while (!breakLoop) {
+    while (Serial.available()) {
+      String temp_str = Serial.readString();
+      temp_str.toCharArray(buf, BUFFER_SIZE);
+      if (temp_str.length() > 15) { //If greater than 15 characters (filter out garbage serial further)
+        digitalWrite(LED_BUILTIN, HIGH);
+        breakLoop = true;
+        break;
+      }
+    }
+  }
+  
+  textX         = matrix.width();
+  textMin       = (int16_t)sizeof(buf) * -12;
+  hue           = 0;
   matrix.begin();
   matrix.setTextWrap(false); // Allow text to run off right edge
   matrix.setTextSize(2);
 }
 
 void loop() {
+  //char str1[] = "51.76F|Rain|72:5m|17:18m|C.Katsu|N:99%|S:38%|SW:45%";
+
   byte i;
+
+  //const char str[] PROGMEM = "51.76F|Rain|72:5m|17:18m|C.Katsu|N:99%|S:38%|SW:45%";
+  //int16_t    textX         = matrix.width(),
+  //        textMin       = (int16_t)sizeof(str) * -12,
+  //        hue           = 0;
 
   // Clear background
   matrix.fillScreen(0);
 
   // Bounce three balls around
+  /*
   for(i=0; i<3; i++) {
     // Draw 'ball'
     matrix.fillCircle(ball[i][0], ball[i][1], 5, pgm_read_word(&ballcolor[i]));
@@ -74,11 +113,13 @@ void loop() {
     if((ball[i][1] == 0) || (ball[i][1] == (matrix.height() - 1)))
       ball[i][3] *= -1;
   }
-
+  */
+  
   // Draw big scrolly text on top
   matrix.setTextColor(matrix.ColorHSV(hue, 255, 255, true));
   matrix.setCursor(textX, 1);
-  matrix.print(F2(str));
+  //matrix.print(F2(str));
+  matrix.print(buf);
 
   // Move text left (w/wrap), increase hue
   if((--textX) < textMin) textX = matrix.width();
@@ -89,6 +130,8 @@ void loop() {
   // On non-AVR boards, delay slightly so screen updates aren't too quick.
   delay(20);
 #endif
+
+  delay(40);
 
   // Update display
   matrix.swapBuffers(false);
